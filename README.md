@@ -83,11 +83,36 @@ exit
 
 ### 3. Arduino Setup
 
-Upload the corresponding motor control sketch to your Arduino Uno. The sketch should:
-- Listen for serial commands at 9600 baud
-- Parse `M,L,R\n` format commands
-- Send I²C commands to Hiwonder controller at address 0x34
-- Control motors on channels M1 (left) and M2 (right)
+The Arduino motor control sketch is included in this repository at `arduino/robot_motor_control/robot_motor_control.ino`.
+
+#### Hardware Connections
+- **SDA**: Arduino Pin A4 → Hiwonder Controller SDA
+- **SCL**: Arduino Pin A5 → Hiwonder Controller SCL
+- **Ground**: Connect Arduino GND to Hiwonder Controller GND
+
+#### Upload the Sketch
+1. Install [Arduino IDE](https://www.arduino.cc/en/software)
+2. Connect Arduino Uno via USB to your computer (not the Pi initially)
+3. Open `arduino/robot_motor_control/robot_motor_control.ino`
+4. Select **Tools > Board > Arduino Uno**
+5. Select **Tools > Port** (usually `/dev/ttyACM0` on Linux)
+6. Click **Upload**
+
+#### Verify Installation
+Open **Tools > Serial Monitor** (9600 baud) to see:
+```
+===========================================
+Arduino Motor Controller - READY
+Waiting for commands from Raspberry Pi...
+===========================================
+```
+
+#### Troubleshooting
+If you need to verify I²C connectivity, use the included scanner:
+- Upload `arduino/i2c_scanner/i2c_scanner.ino`
+- Check Serial Monitor for "Found device at 0x34"
+
+See `arduino/README.md` for detailed Arduino setup and troubleshooting guide.
 
 ### 4. Permissions Setup
 
