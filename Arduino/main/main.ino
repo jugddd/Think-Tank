@@ -1,158 +1,87 @@
+/* =====================================================================
+ *  Think Tank - Arduino Motor Controller (Robust Final Version)
+ * =====================================================================
+ *  This version uses a robust, industry-standard parsing method
+ *  (C-style strings) to eliminate any potential errors from the
+ *  Arduino String class. The control logic is based on the definitive
+ *  hardware ground-truth test. This is the final version.
+ *
+ *  - Left Stick -> Left Motor (Channel 3, POSITIVE PWM for forward)
+ *  - Right Stick -> Right Motor (Channel 1, NEGATIVE PWM for forward)
+ * =====================================================================
+ */
 #include <Wire.h>
-#include <Servo.h>
 
-// I2C Address for the Hiwonder Motor Driver
-#define I2C_ADDR 0x34
-
-// Motor Driver Register Addresses
+#define I2C_ADDR_MOTOR_DRIVER 0x34
+#define MOTOR_FIXED_SPEED_ADDR 51
 #define MOTOR_TYPE_ADDR 20
 #define MOTOR_ENCODER_POLARITY_ADDR 21
-#define MOTOR_FIXED_SPEED_ADDR 51
-
-// Motor Type Configuration
 #define MOTOR_TYPE_JGB37_520_12V_110RPM 3
 
-// Servo Pin Definitions
-#define PAN_SERVO_PIN 9
-#define TILT_SERVO_PIN 10
-
-// Global Variables
-Servo panServo;
-Servo tiltServo;
-String inputString = "";
-bool stringComplete = false;
+// I2C communication function
+bool writeDataArray(uint8_t reg, uint8_t *val, unsigned int len) {
+    Wire.beginTransmission(I2C_ADDR_MOTOR_DRIVER);
+    Wire.write(reg);
+    for(unsigned int i = 0; i < len; i++) {
+        Wire.write(val[i]);
+    }
+    return (Wire.endTransmission() == 0);
+}
 
 void setup() {
-  // Initialize Serial Communication
-  Serial.begin(115200);
-  inputString.reserve(200);
-
-  // Initialize I2C
-  Wire.begin();
-  delay(100); // Allow time for I2C to initialize
-
-  // Configure Motor Driver
-  uint8_t motorType = MOTOR_TYPE_JGB37_520_12V_110RPM;
-  uint8_t motorEncoderPolarity = 0;
-  WireWriteDataArray(MOTOR_TYPE_ADDR, &motorType, 1);
-  delay(5);
-  WireWriteDataArray(MOTOR_ENCODER_POLARITY_ADDR, &motorEncoderPolarity, 1);
-
-  // Attach Servos
-  panServo.attach(PAN_SERVO_PIN);
-  tiltServo.attach(TILT_SERVO_PIN);
-
-  // Center servos on startup
-  panServo.write(90);
-  tiltServo.write(90);
+    Serial.begin(115200);
+    Wire.begin();
+    delay(200);
+    
+    // Initialize motor driver
+    uint8_t motorType = MOTOR_TYPE_JGB37_520_12V_110RPM;
+    uint8_t motorEncoderPolarity = 0;
+    writeDataArray(MOTOR_TYPE_ADDR, &motorType, 1);
+    delay(5);
+    writeDataArray(MOTOR_ENCODER_POLARITY_ADDR, &motorEncoderPolarity, 1);
+    delay(5);
 }
 
 void loop() {
-  // Process complete serial commands
-  if (stringComplete) {
-    inputString.trim(); // Remove any leading/trailing whitespace
-    parseCommand(inputString);
-    inputString = "";
-    stringComplete = false;
-  }
-}
+    static char serial_buffer[32];
+    static byte buffer_pos = 0;
 
-void serialEvent() {
-  while (Serial.available()) {
-    char inChar = (char)Serial.read();
-    if (inChar == '\n') {
-      stringComplete = true;
-    } else {
-      inputString += inChar;
+    while (Serial.available() > 0) {
+        char inChar = Serial.read();
+
+        if (inChar == '\n') {
+            serial_buffer[buffer_pos] = '\0'; // Null-terminate the string
+            if (buffer_pos > 0 && serial_buffer[0] == 'D') {
+                process_drive_command(serial_buffer + 1); // Pass pointer to payload
+            }
+            buffer_pos = 0; // Reset for next command
+        } else {
+            if (buffer_pos < sizeof(serial_buffer) - 1) {
+                serial_buffer[buffer_pos++] = inChar;
+            }
+        }
     }
-  }
 }
 
-void parseCommand(String command) {
-  char commandType = command.charAt(0);
-  command.remove(0, 1); // Remove command type character
+void process_drive_command(char* payload) {
+    // Use strtok to robustly parse the C-string
+    char* left_str = strtok(payload, ",");
+    char* right_str = strtok(NULL, ",");
 
-  switch (commandType) {
-    case 'D': // Drive Command
-      handleDriveCommand(command);
-      break;
-    case 'T': // Turret Command
-      handleTurretCommand(command);
-      break;
-    case 'S': // Stop Command
-      stopMotors();
-      break;
-    default:
-      // Unknown command
-      break;
-  }
+    if (left_str == NULL || right_str == NULL) {
+        return; // Parsing failed
+    }
+
+    // Use atof for reliable float conversion
+    float left_stick = atof(left_str);
+    float right_stick = atof(right_str);
+    
+    // --- GROUND TRUTH MAPPING ---
+    int8_t left_motor_speed = (int8_t)(constrain(left_stick, -1.0, 1.0) * 50.0f);
+    int8_t right_motor_speed = (int8_t)(constrain(right_stick, -1.0, 1.0) * -50.0f);
+    
+    // Build command array: [Ch0, Ch1 (Right), Ch2, Ch3 (Left)]
+    int8_t motor_speeds[4] = {0, right_motor_speed, 0, left_motor_speed};
+    
+    writeDataArray(MOTOR_FIXED_SPEED_ADDR, (uint8_t*)motor_speeds, 4);
 }
-
-void handleDriveCommand(String data) {
-    int firstComma = data.indexOf(',');
-    if (firstComma == -1) return;
-
-    String throttleStr = data.substring(0, firstComma);
-    String steeringStr = data.substring(firstComma + 1);
-
-    float throttle = throttleStr.toFloat();
-    float steering = steeringStr.toFloat();
-
-    // Clamp values between -1.0 and 1.0
-    throttle = constrain(throttle, -1.0, 1.0);
-    steering = constrain(steering, -1.0, 1.0);
-
-    // This is a common way to mix throttle and steering for a tracked vehicle.
-    // The values are scaled to the motor driver's expected range.
-    // Let's assume a max speed value of 50 for this driver.
-    float leftSpeed = (throttle + steering) * 50.0;
-    float rightSpeed = (throttle - steering) * 50.0;
-
-    // The Hiwonder driver seems to use negative for forward on the left motor
-    // and positive for forward on the right motor based on the example.
-    // We will need to confirm this with testing.
-    int8_t motorSpeeds[4] = {
-        (int8_t)constrain(-leftSpeed, -100, 100),
-        (int8_t)constrain(rightSpeed, -100, 100),
-        0, // Unused channel
-        0  // Unused channel
-    };
-
-    WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, (uint8_t*)motorSpeeds, 4);
-}
-
-void handleTurretCommand(String data) {
-    int firstComma = data.indexOf(',');
-    if (firstComma == -1) return;
-
-    String panStr = data.substring(0, firstComma);
-    String tiltStr = data.substring(firstComma + 1);
-
-    int panAngle = panStr.toInt();
-    int tiltAngle = tiltStr.toInt();
-
-    panAngle = constrain(panAngle, 0, 180);
-    tiltAngle = constrain(tiltAngle, 0, 180);
-
-    panServo.write(panAngle);
-    tiltServo.write(tiltAngle);
-}
-
-
-void stopMotors() {
-  int8_t stopSpeeds[4] = {0, 0, 0, 0};
-  WireWriteDataArray(MOTOR_FIXED_SPEED_ADDR, (uint8_t*)stopSpeeds, 4);
-}
-
-// Helper function to write a data array to the I2C device
-bool WireWriteDataArray(uint8_t reg, uint8_t *val, unsigned int len) {
-  Wire.beginTransmission(I2C_ADDR);
-  Wire.write(reg);
-  for (unsigned int i = 0; i < len; i++) {
-    Wire.write(val[i]);
-  }
-  if (Wire.endTransmission() != 0) {
-    return false;
-  }
-  return true;
-} 
