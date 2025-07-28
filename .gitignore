@@ -46,7 +46,8 @@ Thumbs.db
 *.temp
 
 # Robot-specific
-# (Add any robot data files you don't want to commit)
+# (Add any robot data files you don't want to commit) 
+HiwonderDocs/
 
 # Arduino IDE Files
 *.hex

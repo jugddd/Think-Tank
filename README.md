@@ -1,275 +1,129 @@
-# Mobile Tracked Robot Control System
+# Think Tank - Mobile Robot Control System
 
-A comprehensive Python application for controlling a tracked robot via PS4 DualShock 4 controller, running on Raspberry Pi with Arduino-based motor control.
+A professional and robust software architecture for controlling a tracked mobile robot. This system uses a Raspberry Pi for high-level logic and an Arduino for real-time hardware control, communicating over a simple and reliable serial protocol.
 
-## System Architecture
+## 🏗️ System Architecture
 
-```
-┌─────────────────┐    Bluetooth     ┌─────────────────┐
-│  PS4 Controller │ ◄─────────────── │   Raspberry Pi  │
-└─────────────────┘                  │                 │
-                                     │  main_robot.py  │
-                                     │                 │
-                                     └─────────┬───────┘
-                                               │ USB Serial
-                                               │ (/dev/ttyACM0)
-                                               ▼
-                                     ┌─────────────────┐
-                                     │   Arduino Uno   │
-                                     │  Motor Control  │
-                                     │     Sketch      │
-                                     └─────────┬───────┘
-                                               │ I²C Bus
-                                               │ (SDA/SCL)
-                                               ▼
-                                     ┌─────────────────┐
-                                     │   Hiwonder     │
-                                     │  4-Ch Motor    │
-                                     │  Controller    │
-                                     │  (Addr: 0x34)  │
-                                     └─────────┬───────┘
-                                               │
-                                     ┌─────────┴───────┐
-                                     ▼                 ▼
-                               ┌───────────┐   ┌───────────┐
-                               │  Motor M1 │   │  Motor M2 │
-                               │   (Left)  │   │  (Right)  │
-                               └───────────┘   └───────────┘
+The architecture is designed for modularity and a clean separation of concerns. The Raspberry Pi handles all complex processing, including user input and future AI/vision tasks, while the Arduino acts as a dedicated hardware slave.
+
+```mermaid
+graph TD
+    subgraph Raspberry Pi
+        A[Bluetooth Game Controller] --> B{raspberry_pi/main.py};
+        B -- "Serial Commands" --> C{{/dev/ttyACM0}};
+        D[AI/Vision Module] -.-> B;
+    end
+
+    subgraph Arduino UNO
+        E{{Serial Port}} --> F{Arduino/main/main.ino};
+        F -- "I2C Commands" --> G[Hiwonder Motor Driver];
+    end
+
+    subgraph Robot Hardware
+        G --> H[Left Track Motors];
+        G --> I[Right Track Motors];
+        F --> J[Turret Servos];
+    end
+
+    C <--> E;
+
+    style D fill:#f9f,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
-## Hardware Requirements
+-   **Raspberry Pi:** Runs the main Python script. It reads controller input, manages control modes (manual vs. AI), and sends simple command strings (e.g., `D,1.0,-0.5`) to the Arduino.
+-   **Arduino:** Listens for serial commands, parses them, and translates them into the low-level I²C signals required by the Hiwonder motor driver and direct PWM signals for servos.
 
-- **Raspberry Pi 5** (8GB) with Raspberry Pi OS (64-bit Desktop)
+## ⚡ Quick Start
+
+1.  Ensure the hardware is wired and the Arduino sketch is uploaded.
+2.  Connect your game controller to the Raspberry Pi.
+3.  Activate the virtual environment and run the main script.
+
+```bash
+# Navigate to the project root
+cd /path/to/Think-Tank
+
+# Activate the virtual environment
+source robot_venv/bin/activate
+
+# Navigate to the Python script directory
+cd raspberry_pi
+
+# Run the controller
+python3 main.py
+```
+
+## 🔧 Hardware Requirements
+
+- **Raspberry Pi** (4, 5, or similar) with Raspberry Pi OS
 - **Arduino Uno** connected via USB
-- **Hiwonder 4-Channel I2C Motor Controller** (I²C address: 0x34)
-- **Two DC encoder motors** connected to M1 and M2 channels
-- **Sony PS4 DualShock 4 controller** (paired via Bluetooth)
-- **AI Hat** (connected to Pi's GPIO for future vision processing)
-- **Power system**: USB power bank (logic) + dual-LiPo (motors)
+- **Hiwonder 4-Channel I²C Motor Controller**
+- **Two DC encoder motors**
+- **Pan/Tilt servo motors** (optional)
+- **Bluetooth or USB Game Controller** (e.g., PS4, Xbox)
+- Appropriate power system for logic and motors.
 
-## Software Installation
+## 📦 Installation
 
-### 1. Setup Python Virtual Environment
+### 1. Raspberry Pi Setup
 
 ```bash
-# Create virtual environment
+# Clone the repository
+git clone https://github.com/jugddd/Think-Tank.git
+cd Think-Tank
+
+# Create and activate a Python virtual environment
 python3 -m venv robot_venv
-
-# Activate virtual environment
 source robot_venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install system-level dependencies required for Pygame
+sudo apt-get update
+sudo apt-get install -y libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libfreetype6-dev python3-dev
+
+# Install Python packages
+pip install -r raspberry_pi/requirements.txt
 ```
 
-### 2. PS4 Controller Pairing
+### 2. Arduino Setup
 
-First, pair your PS4 controller with the Raspberry Pi:
+1.  Open the Arduino IDE.
+2.  Go to `Tools -> Manage Libraries...` and install the official **"Servo"** library.
+3.  Open the sketch: `Arduino/main/main.ino`.
+4.  Select your Board (**Arduino Uno**) and Port (e.g., `/dev/ttyACM0`).
+5.  Click **Upload**.
 
-```bash
-# Install Bluetooth utilities if not already installed
-sudo apt update
-sudo apt install bluetooth bluez
+## 🎮 Usage
 
-# Put controller in pairing mode (hold PS + Share buttons)
-# Then scan and pair
-bluetoothctl
-scan on
-pair <controller_mac_address>
-trust <controller_mac_address>
-connect <controller_mac_address>
-exit
-```
+Once the `main.py` script is running, it will automatically connect to the Arduino and the first detected joystick.
 
-### 3. Arduino Setup
+### Default Controls
 
-The Arduino motor control sketch is included in this repository at `arduino/robot_motor_control/robot_motor_control.ino`.
+| Input                  | Function                 |
+| ---------------------- | ------------------------ |
+| **Left Stick Y-Axis**  | Forward/Backward Throttle|
+| **Right Stick X-Axis** | Left/Right Steering      |
+| **Button 'A' / 0**     | Toggle AI / Manual Mode  |
+| **Start Button / 8**   | Emergency Stop           |
 
-#### Hardware Connections
-- **SDA**: Arduino Pin A4 → Hiwonder Controller SDA
-- **SCL**: Arduino Pin A5 → Hiwonder Controller SCL
-- **Ground**: Connect Arduino GND to Hiwonder Controller GND
+*Note: Button and axis mappings can be easily changed in `raspberry_pi/main.py`.*
 
-#### Upload the Sketch
-1. Install [Arduino IDE](https://www.arduino.cc/en/software)
-2. Connect Arduino Uno via USB to your computer (not the Pi initially)
-3. Open `arduino/robot_motor_control/robot_motor_control.ino`
-4. Select **Tools > Board > Arduino Uno**
-5. Select **Tools > Port** (usually `/dev/ttyACM0` on Linux)
-6. Click **Upload**
+## 📡 Serial Communication Protocol
 
-#### Verify Installation
-Open **Tools > Serial Monitor** (9600 baud) to see:
-```
-===========================================
-Arduino Motor Controller - READY
-Waiting for commands from Raspberry Pi...
-===========================================
-```
+The communication between the Pi and Arduino is human-readable and easy to debug. All commands are terminated by a newline character (`\n`).
 
-#### Troubleshooting
-If you need to verify I²C connectivity, use the included scanner:
-- Upload `arduino/i2c_scanner/i2c_scanner.ino`
-- Check Serial Monitor for "Found device at 0x34"
+| Command | Format                 | Example             | Description                                   |
+|---------|------------------------|---------------------|-----------------------------------------------|
+| **Drive** | `D,<throttle>,<steer>` | `D,0.8,-0.25`       | Controls the tank tracks. Throttle and steer are floats from -1.0 to 1.0. |
+| **Turret**| `T,<pan>,<tilt>`       | `T,90,45`           | Controls the pan/tilt servos. Angles are integers from 0 to 180.         |
+| **Stop**  | `S`                    | `S`                 | Immediately stops all motors.                 |
 
-See `arduino/README.md` for detailed Arduino setup and troubleshooting guide.
+## 🛠️ Troubleshooting
 
-### 4. Permissions Setup
-
-Ensure the Pi user has access to the serial port:
-
-```bash
-sudo usermod -a -G dialout $USER
-# Log out and back in for changes to take effect
-```
-
-## Usage
-
-### Running the Robot Controller
-
-```bash
-# Activate virtual environment
-source robot_venv/bin/activate
-
-# Run the main control script
-python3 main_robot.py
-```
-
-### Control Mapping
-
-| Input | Function |
-|-------|----------|
-| **Left Stick Y-axis** | Forward/Backward movement |
-| **Right Stick X-axis** | Left/Right turning |
-| **Circle Button** | Emergency stop (hold to stop, release to resume) |
-| **PS Button** | Connect/wake controller |
-
-### Tank Drive Behavior
-
-The robot uses **tank-style steering**:
-- **Forward/Backward**: Both motors run at same speed
-- **Turning**: Differential speed between left and right motors
-- **Combined movements**: Forward+Turn results in curved motion
-
-**Examples:**
-- Left stick up → Both motors forward
-- Right stick right → Left motor faster, right motor slower (turn right)
-- Left stick up + Right stick right → Forward curve to the right
-
-## System Features
-
-### Real-time Control
-- **20Hz command rate** (50ms update intervals)
-- **Thread-safe** controller input handling
-- **Automatic emergency stop** on controller disconnect
-
-### Safety Features
-- Emergency stop button (Circle)
-- Automatic motor stop on disconnect
-- Graceful shutdown with Ctrl+C
-- Input deadzone filtering (prevents drift)
-
-### Debug Output
-The system provides real-time feedback:
-```
-Sending -> Left:  255, Right:  150
-Sending -> Left: -128, Right: -128
-EMERGENCY STOP - Motors stopped
-```
-
-### Future Vision Integration
-The code includes placeholder functions for AI/computer vision:
-- Object detection and tracking
-- Autonomous navigation
-- Obstacle avoidance
-- Integration with AI Hat hardware acceleration
-
-## Architecture Details
-
-### Classes
-
-1. **`PS4ControllerHandler`**: Manages PS4 controller input in background thread
-2. **`TankDriveMixer`**: Implements drive/turn mixing algorithm  
-3. **`RobotController`**: Main coordinator for serial communication and control loop
-
-### Communication Protocol
-
-**Pi → Arduino**: Serial commands at 9600 baud
-```
-Format: M,<left_speed>,<right_speed>\n
-Example: M,255,-128\n
-Range: -255 to 255 for each motor
-```
-
-**Arduino → Motor Controller**: I²C commands to address 0x34
-
-### Configuration
-
-Key parameters can be adjusted in the script:
-```python
-SERIAL_PORT = "/dev/ttyACM0"        # Arduino USB port
-SERIAL_BAUDRATE = 9600              # Serial communication speed
-COMMAND_RATE_HZ = 20                # Control loop frequency
-DRIVE_SENSITIVITY = 1.0             # Forward/back sensitivity
-TURN_SENSITIVITY = 0.8              # Turn sensitivity  
-DEADZONE_THRESHOLD = 0.1            # Stick deadzone
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**"Failed to connect to Arduino"**
-- Check USB connection
-- Verify Arduino sketch is uploaded and running
-- Check serial port permissions: `ls -l /dev/ttyACM0`
-
-**"Failed to setup PS4 controller"**
-- Ensure controller is paired via Bluetooth
-- Try re-pairing the controller
-- Check `pyPS4Controller` installation
-
-**"Controller disconnected"**
-- Controller may have gone to sleep
-- Press PS button to reconnect
-- Check Bluetooth connection stability
-
-### Testing Serial Connection
-
-```bash
-# Test serial port access
-ls -l /dev/ttyACM*
-
-# Monitor serial communication
-python3 -c "
-import serial
-s = serial.Serial('/dev/ttyACM0', 9600)
-s.write(b'M,0,0\n')
-print('Command sent successfully')
-s.close()
-"
-```
-
-### Testing Controller
-
-```bash
-# Test controller input
-python3 -c "
-from pyPS4Controller.controller import Controller
-class TestController(Controller):
-    def on_x_press(self): print('X pressed')
-controller = TestController()
-controller.listen()
-"
-```
-
-## Development Notes
-
-- The code is structured for easy extension with vision processing
-- All motor commands go through the tank drive mixer for consistency
-- Thread-safe design allows for future multi-threaded features
-- Comprehensive error handling and logging
-
-## License
-
-This robot control system is designed for educational and research purposes. 
+-   **"No joystick detected"**: Ensure your controller is connected and recognized by the Raspberry Pi before running the script.
+-   **"Error connecting to Arduino"**:
+    -   Verify the Arduino is plugged in.
+    -   Check that the `SERIAL_PORT` variable in `raspberry_pi/main.py` matches the Arduino's port (e.g., `/dev/ttyACM0` or `/dev/ttyUSB0`). You can find it by running `ls /dev/tty*`.
+    -   Ensure you have the correct permissions: `sudo usermod -a -G dialout $USER` (requires logout/login to apply).
+-   **Motors not responding**:
+    -   Check motor power supply.
+    -   Verify I²C wiring between the Arduino and the motor driver (SDA->A4, SCL->A5). 
